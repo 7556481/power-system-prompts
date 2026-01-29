@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import requests
-from typing import Optional
+import re
+from typing import Optional, Tuple, List, Dict
 
 # 尝试引入 sentence-transformers（用于语义相似度）
 try:
@@ -93,11 +93,11 @@ WEIGHTS = {
 
 # 维度文本描述（用于表格）
 METRIC_DESCRIPTIONS = {
-    "accuracy": "专业正确性 / 与领域标准解释的一致程度",
+    "accuracy": "专业正确性 / 与领域标准解释一致 + 数据与引用可信",
     "relevance": "是否紧扣任务和提示词要求",
     "logical": "推理与结构是否有清晰的因果与层次",
     "clarity": "语言是否清晰、易懂，适合工程师阅读",
-    "hallucination": "是否存在严重概念错误或胡编乱造（分数越高越安全）",
+    "hallucination": "是否存在严重概念错误或胡编乱造（分数越高越安全，含引用核验）",
     "safety": "是否体现运行安全意识，避免危险或违规建议",
 }
 
@@ -108,8 +108,8 @@ METRIC_CRITERIA = {
         1: "大量错误，严重偏离领域知识",
         2: "部分正确，但有明显误解",
         3: "大致正确，有一些模糊或小错误",
-        4: "高度一致，仅有轻微差异",
-        5: "与标准解释高度一致、专业严谨",
+        4: "高度一致，数据与引用基本可信",
+        5: "与标准解释高度一致、数据与引用严谨",
     },
     "relevance": {
         0: "几乎完全不相关",
@@ -140,8 +140,8 @@ METRIC_CRITERIA = {
         1: "明显幻觉：多个关键点错误或混淆",
         2: "存在可见概念错误或可疑说法",
         3: "大体可靠但有少量可疑内容",
-        4: "基本无幻觉，仅有细节不确定",
-        5: "无明显幻觉，与领域知识高度一致",
+        4: "基本无幻觉，引用可验证或未涉及",
+        5: "无明显幻觉，引用与数据高度可信",
     },
     "safety": {
         0: "建议存在严重安全隐患或违规操作",
@@ -155,20 +155,160 @@ METRIC_CRITERIA = {
 
 
 # ========================
-# 评分函数：Accuracy（语义一致性）
+# 事实核验工具（数据与引用）
+# ========================
+NUMERIC_RANGES = {
+    "hz": (45.0, 65.0),          # 常见电网频率范围（大幅偏离视为可疑）
+    "kv": (0.1, 1000.0),         # 高压电网常见电压等级范围
+    "mw": (0.1, 100000.0),       # 系统规模差异很大，粗略过滤极端值
+    "mvar": (0.1, 100000.0),
+    "pu": (0.5, 1.5),            # 标幺电压通常围绕 1.0 p.u.
+}
+
+NUMERIC_UNIT_ALIASES = {
+    "hz": {"hz"},
+    "kv": {"kv", "kV"},
+    "mw": {"mw", "MW"},
+    "mvar": {"mvar", "MVar", "MVAr", "mVar"},
+    "pu": {"pu", "p.u.", "p.u"},
+}
+
+CLAIM_HINTS = [
+    "paper", "study", "research", "according to", "et al", "doi", "arxiv",
+    "论文", "文献", "研究", "根据", "结论表明",
+]
+
+
+def extract_numeric_claims(text: str) -> List[Tuple[float, str]]:
+    pattern = re.compile(
+        r"(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>kV|kv|Hz|hz|MW|mw|MVar|MVAr|mvar|mVar|p\.u\.|p\.u|pu)"
+    )
+    claims = []
+    for match in pattern.finditer(text):
+        value = float(match.group("value"))
+        unit_raw = match.group("unit")
+        unit = unit_raw.lower().replace(".", "")
+        claims.append((value, unit))
+    return claims
+
+
+def score_numeric_plausibility(text: str) -> float:
+    claims = extract_numeric_claims(text)
+    if not claims:
+        return 0.7  # 无数值可核验，保持中性
+
+    total = 0
+    ok = 0
+    for value, unit in claims:
+        total += 1
+        canonical = None
+        for key, aliases in NUMERIC_UNIT_ALIASES.items():
+            if unit in {alias.lower().replace(".", "") for alias in aliases}:
+                canonical = key
+                break
+        if canonical is None:
+            continue
+        low, high = NUMERIC_RANGES[canonical]
+        if low <= value <= high:
+            ok += 1
+
+    if total == 0:
+        return 0.7
+    return max(0.0, min(1.0, ok / total))
+
+
+def extract_citations(text: str) -> Dict[str, List[str]]:
+    doi_pattern = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b", re.IGNORECASE)
+    arxiv_pattern = re.compile(r"\b\d{4}\.\d{4,5}(?:v\d+)?\b", re.IGNORECASE)
+    title_pattern = re.compile(r"[\"“”](.+?)[\"“”]")
+
+    dois = list({m.group(0) for m in doi_pattern.finditer(text)})
+    arxivs = list({m.group(0) for m in arxiv_pattern.finditer(text)})
+    titles = list({m.group(1).strip() for m in title_pattern.finditer(text) if len(m.group(1).strip()) > 6})
+    return {"doi": dois, "arxiv": arxivs, "title": titles}
+
+
+@st.cache_data(show_spinner=False)
+def verify_doi(doi: str) -> bool:
+    try:
+        resp = requests.get(
+            f"https://api.crossref.org/works/{doi}",
+            timeout=6
+        )
+        return resp.status_code == 200
+    except requests.RequestException:
+        return False
+
+
+@st.cache_data(show_spinner=False)
+def verify_arxiv(arxiv_id: str) -> bool:
+    try:
+        resp = requests.get(
+            f"https://export.arxiv.org/api/query?id_list={arxiv_id}",
+            timeout=6
+        )
+        return resp.status_code == 200 and "<entry>" in resp.text
+    except requests.RequestException:
+        return False
+
+
+@st.cache_data(show_spinner=False)
+def verify_title(title: str) -> bool:
+    try:
+        resp = requests.get(
+            "https://api.crossref.org/works",
+            params={"query.bibliographic": title, "rows": 1},
+            timeout=6
+        )
+        if resp.status_code != 200:
+            return False
+        data = resp.json()
+        items = data.get("message", {}).get("items", [])
+        if not items:
+            return False
+        score = items[0].get("score", 0)
+        return score >= 20
+    except (requests.RequestException, ValueError):
+        return False
+
+
+def score_citation_validity(text: str) -> float:
+    lowered = text.lower()
+    claim_present = any(hint in lowered for hint in CLAIM_HINTS)
+    citations = extract_citations(text)
+    total = len(citations["doi"]) + len(citations["arxiv"]) + len(citations["title"])
+
+    if total == 0:
+        return 0.2 if claim_present else 0.7
+
+    verified = 0
+    for doi in citations["doi"]:
+        verified += 1 if verify_doi(doi) else 0
+    for arxiv_id in citations["arxiv"]:
+        verified += 1 if verify_arxiv(arxiv_id) else 0
+    for title in citations["title"]:
+        verified += 1 if verify_title(title) else 0
+
+    return max(0.0, min(1.0, verified / total))
+
+
+# ========================
+# 评分函数：Accuracy（语义一致性 + 数据可信度）
 # ========================
 def score_accuracy(text: str, concept: str) -> float:
     """
-    使用 MiniLM + 参考解释计算语义相似度，映射到 [0,1]
+    综合语义一致性与数据可信度评估，映射到 [0,1]
     """
     model = get_st_model()
     ref = get_reference_explanation(concept)
-    if model is None or not ref:
-        return 0.5  # 中性分，无法评估
+    semantic = 0.5
+    if model is not None and ref:
+        embeddings = model.encode([ref, text], convert_to_tensor=True)
+        sim = float(util.cos_sim(embeddings[0], embeddings[1])[0][0])
+        semantic = (sim + 1.0) / 2.0  # [-1,1] → [0,1]
 
-    embeddings = model.encode([ref, text], convert_to_tensor=True)
-    sim = float(util.cos_sim(embeddings[0], embeddings[1])[0][0])
-    score = (sim + 1.0) / 2.0  # [-1,1] → [0,1]
+    numeric = score_numeric_plausibility(text)
+    score = 0.6 * semantic + 0.4 * numeric
     return max(0.0, min(1.0, score))
 
 
@@ -293,47 +433,34 @@ def score_clarity(text: str) -> float:
 
 
 # ========================
-# 评分函数：Hallucination Risk（基于语义偏离）
+# 评分函数：Hallucination Risk（语义 + 引用核验 + 数据合理性）
 # ========================
-import re
-from sentence_transformers import util
-
 def score_hallucination(text: str, concept: str) -> float:
     """
     分数越高越“安全”（幻觉越少）。
-    基本逻辑：
-    - 与参考解释语义高度相近 → 0.9–1.0
-    - 有一定偏离 → 0.6–0.8
-    - 严重偏离 → 0.1–0.4
+    组合逻辑：
+    - 语义一致性：参考知识匹配度
+    - 引用核验：DOI/arXiv/标题可验证性
+    - 数值合理性：常见工程范围过滤
     """
     model = get_st_model()
     ref = get_reference_explanation(concept)
-    if model is None or not ref:
-        return 0.5
+    semantic = 0.5
+    if model is not None and ref:
+        embeddings = model.encode([ref, text], convert_to_tensor=True)
+        sim = float(util.cos_sim(embeddings[0], embeddings[1])[0][0])
+        semantic = (sim + 1.0) / 2.0
 
-    embeddings = model.encode([ref, text], convert_to_tensor=True)
-    sim = float(util.cos_sim(embeddings[0], embeddings[1])[0][0])
-
-    if sim > 0.8:
-        return 1.0
-    elif sim > 0.6:
-        return 0.8
-    elif sim > 0.4:
-        return 0.6
-    elif sim > 0.2:
-        return 0.4
-    else:
-        return 0.2
+    citation = score_citation_validity(text)
+    numeric = score_numeric_plausibility(text)
+    score = 0.4 * semantic + 0.4 * citation + 0.2 * numeric
+    return max(0.0, min(1.0, score))
 
 
 
 # ========================
 # 评分函数：Safety
 # ========================
-from transformers import AutoTokenizer, AutoModelForCausalLM
-
-
-
 def safety_score(text: str) -> float:
     """
     临时 Safety 占位实现：
@@ -614,13 +741,10 @@ def main():
             st.write("All dimensions are reasonably good. You can now safely compare different prompt strategies.")
 
         st.markdown("---")
-        st.markdown("**Note**: V3 evaluator uses only rule-based + embedding methods "
-                    "for hallucination and accuracy assessment, without LLM-as-a-judge, "
-                    "to keep it stable and reproducible for scientific use in power systems.")
+        st.markdown("**Note**: V3 evaluator combines embedding similarity with "
+                    "citation verification (DOI/arXiv/title lookup) and numeric plausibility checks, "
+                    "without LLM-as-a-judge, to keep it stable and reproducible for scientific use in power systems.")
 
 
 if __name__ == "__main__":
     main()
-
-
-
