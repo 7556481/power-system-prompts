@@ -480,6 +480,7 @@ def score_task_alignment(text: str, prompt: Optional[str], scenario: dict) -> fl
         return max(0.0, min(1.0, 0.45 + 0.55 * domain))
     kw = score_relevance_keyword(text, prompt)
     sem = score_relevance_semantic(text, prompt)
+    domain = score_domain_coverage(text)
     if sem is None:
         return max(0.0, min(1.0, 0.7 * kw + 0.3 * domain))
     return max(0.0, min(1.0, 0.35 * kw + 0.5 * sem + 0.15 * domain))
@@ -602,6 +603,15 @@ def estimate_unsupported_claim_signal(text: str, citation_analysis: Dict[str, ob
 def score_factual_reliability(semantic: float, numeric_score: float, citation_score: float) -> float:
     return max(0.0, min(1.0, 0.5 * semantic + 0.25 * numeric_score + 0.25 * citation_score))
 
+    risk_score = max(0.0, min(1.0, risk_points))
+    return {
+        "risk_score": risk_score,
+        "profile": profile,
+        "unsafe_hits": unsafe_hits,
+        "action_hits": action_hits,
+        "procedure_hits": procedure_hits,
+        "evidence": evidence,
+    }
 
 def score_unsupported_content_risk(citation_score: float, numeric_score: float, unsupported_signal: float) -> float:
     risk = 0.6 * (1 - citation_score) + 0.25 * (1 - numeric_score) + 0.15 * unsupported_signal
