@@ -469,6 +469,7 @@ def score_task_alignment(text: str, prompt: Optional[str], scenario: dict) -> fl
         return max(0.0, min(1.0, 0.45 + 0.55 * domain))
     kw = score_relevance_keyword(text, prompt)
     sem = score_relevance_semantic(text, prompt)
+    domain = score_domain_coverage(text)
     if sem is None:
         return max(0.0, min(1.0, 0.7 * kw + 0.3 * domain))
     return max(0.0, min(1.0, 0.35 * kw + 0.5 * sem + 0.15 * domain))
