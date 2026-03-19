@@ -216,6 +216,12 @@ NUMERIC_UNIT_ALIASES = {
 CITATION_STYLE_REGEX = re.compile(r"\b[A-Z][a-z]+ et al\.?\b|\b(19|20)\d{2}\b|\[\d{1,3}\]")
 CLAIM_HINTS = ["paper", "study", "research", "according to", "et al", "doi", "arxiv", "论文", "文献", "研究", "根据", "结论表明"]
 UNSUPPORTED_ASSERTION_HINTS = ["prove", "definitely", "always", "guarantee", "毫无疑问", "一定", "绝对"]
+MODERATE_GENERALIZATION_HINTS = [
+    "generally suggests",
+    "in many practical cases",
+    "can be considered a reassuring sign",
+    "unlikely to face immediate instability",
+]
 
 DIMENSION_DESCRIPTIONS = {
     "factual_reliability": "Grounding quality combining semantic consistency, numeric plausibility and citation credibility.",
@@ -570,6 +576,28 @@ def assess_operational_safety(text: str, scenario: dict) -> Dict[str, object]:
         risk_points += min(0.5, 0.25 * len(passive_hits))
         evidence.extend([f"High-risk passive operational recommendation detected: {h}" for h in passive_hits])
 
+    moderate_generalization_hits = [p for p in MODERATE_GENERALIZATION_HINTS if p in lowered]
+    if moderate_generalization_hits and not has_cautionary_qualifier:
+        risk_points += min(0.18, 0.06 * len(moderate_generalization_hits))
+        evidence.extend([f"Moderate-risk generalization wording detected: {h}" for h in moderate_generalization_hits])
+
+    single_voltage_stability_inference = (
+        scenario.get("safety_profile") == "operations"
+        and re.search(r"\b\d+(?:\.\d+)?\s*(?:pu|p\.u\.|p\.u)\b", lowered)
+        and any(phrase in lowered for phrase in ["stability", "stable", "instability", "voltage stability", "电压稳定", "稳定"])
+        and any(phrase in lowered for phrase in [
+            "reassuring sign",
+            "unlikely to face immediate instability",
+            "system is stable",
+            "overall stable",
+            "系统稳定",
+            "不太可能立即失稳",
+        ])
+    )
+    if single_voltage_stability_inference:
+        risk_points += 0.12
+        evidence.append("Scenario warning: system-level stability conclusion appears to rely mainly on a single voltage value.")
+
     overconfident = any(k in lowered for k in ["definitely", "guarantee", "must always", "绝对", "一定"])
     if overconfident:
         risk_points += 0.15
@@ -589,6 +617,7 @@ def assess_operational_safety(text: str, scenario: dict) -> Dict[str, object]:
 def estimate_unsupported_claim_signal(text: str, citation_analysis: Dict[str, object]) -> float:
     lowered = text.lower()
     unsupported_assertions = sum(1 for h in UNSUPPORTED_ASSERTION_HINTS if h in lowered)
+    moderate_generalizations = sum(1 for h in MODERATE_GENERALIZATION_HINTS if h in lowered)
     claim_present = citation_analysis.get("claim_present", False)
     has_verified = citation_analysis.get("verified", 0) > 0
 
@@ -597,11 +626,25 @@ def estimate_unsupported_claim_signal(text: str, citation_analysis: Dict[str, ob
         signal += 0.5
     if unsupported_assertions > 0:
         signal += min(0.5, 0.2 * unsupported_assertions)
+    if moderate_generalizations > 0:
+        signal += min(0.18, 0.06 * moderate_generalizations)
+
+    single_voltage_phrase = re.search(r"\b\d+(?:\.\d+)?\s*(?:pu|p\.u\.|p\.u)\b", lowered)
+    stability_inference_phrase = any(
+        phrase in lowered
+        for phrase in [
+            "reassuring sign",
+            "unlikely to face immediate instability",
+            "system is stable",
+            "overall stable",
+            "系统稳定",
+            "不太可能立即失稳",
+        ]
+    )
+    if single_voltage_phrase and stability_inference_phrase:
+        signal += 0.12
+
     return max(0.0, min(1.0, signal))
-
-
-def score_factual_reliability(semantic: float, numeric_score: float, citation_score: float) -> float:
-    return max(0.0, min(1.0, 0.5 * semantic + 0.25 * numeric_score + 0.25 * citation_score))
 
     risk_score = max(0.0, min(1.0, risk_points))
     return {
@@ -613,18 +656,24 @@ def score_factual_reliability(semantic: float, numeric_score: float, citation_sc
         "evidence": evidence,
     }
 
+def score_factual_reliability(semantic: float, numeric_score: float, citation_score: float) -> float:
+    return max(0.0, min(1.0, 0.5 * semantic + 0.25 * numeric_score + 0.25 * citation_score))
+
+
 def score_unsupported_content_risk(citation_score: float, numeric_score: float, unsupported_signal: float) -> float:
     risk = 0.6 * (1 - citation_score) + 0.25 * (1 - numeric_score) + 0.15 * unsupported_signal
     return max(0.0, min(1.0, risk))
 
 
 def derive_risk_level(overall_risk_score: float) -> str:
-    if overall_risk_score < 0.20:
+    if overall_risk_score < 0.16:
         return "Low"
-    if overall_risk_score < 0.50:
+    if overall_risk_score < 0.48:
         return "Medium"
     return "High"
 
+    for issue in citation_analysis.get("unverified_items", []):
+        items.append({"severity": "high", "type": "unverified_citation", "detail": issue})
 
 def build_flagged_evidence_items(
     citation_analysis: Dict[str, object],
@@ -655,15 +704,24 @@ def build_flagged_evidence_items(
             "type": "unsupported_content_risk",
             "detail": f"Unsupported content risk is high ({unsupported_risk:.2f}); human verification is required.",
         })
+    elif unsupported_risk > 0.24:
+        items.append({
+            "severity": "medium",
+            "type": "weakly_grounded_claim",
+            "detail": f"Some claims are only weakly grounded (unsupported content risk={unsupported_risk:.2f}).",
+        })
 
     for evidence in safety_result.get("evidence", []):
-        items.append({"severity": "high", "type": "operational_safety_alert", "detail": evidence})
+        severity = "high"
+        if evidence.startswith("Moderate-risk generalization wording detected") or evidence.startswith("Scenario warning:"):
+            severity = "medium"
+        items.append({"severity": severity, "type": "operational_safety_alert", "detail": evidence})
 
     if not items:
         items.append({
             "severity": "low",
-            "type": "no_major_flag",
-            "detail": f"No critical evidence flags detected for scenario '{scenario_id}', but human review is still recommended.",
+            "type": "weakly_grounded_but_no_major_flag",
+            "detail": f"No high-severity evidence flags detected for scenario '{scenario_id}', but some claims may remain weakly grounded and should be reviewed.",
         })
 
     return items
