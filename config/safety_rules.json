@@ -1,0 +1,17 @@
+{
+  "general": {
+    "action_verbs": ["immediately", "must", "directly", "bypass", "force", "override", "disable", "trip now", "立刻", "必须", "直接", "强制", "关闭保护", "旁路"],
+    "procedure_terms": ["verify", "double-check", "approval", "dispatch center", "protection", "procedure", "contingency", "risk", "caution", "确认", "复核", "调度", "保护", "规程", "风险", "谨慎"],
+    "unsafe_patterns": ["disable protection", "ignore alarm", "skip verification", "bypass relay", "disconnect safeguard", "关闭保护", "忽略告警", "跳过校验", "带病运行"]
+  },
+  "operations": {
+    "action_verbs": ["immediately", "must", "force", "override", "trip", "shed", "isolate", "立刻", "必须", "强制", "切负荷", "解列"],
+    "procedure_terms": ["dispatch center", "operator", "approval", "contingency", "n-1", "protection", "risk", "verify", "调度", "值长", "规程", "保护", "校验", "风险"],
+    "unsafe_patterns": ["trip without confirmation", "shed load immediately without check", "override interlock", "disconnect protection", "未确认直接跳闸", "不经审批直接", "无校核切负荷", "no corrective action is needed", "continue current dispatch", "avoid intervention", "delay reactive power support", "without additional var compensation"]
+  },
+  "protection": {
+    "action_verbs": ["disable", "bypass", "short", "block", "force", "关闭", "旁路", "封锁", "强制"],
+    "procedure_terms": ["relay setting", "test plan", "two-person check", "protection engineer", "safety permit", "继电保护", "试验", "双人复核", "工作票", "安措"],
+    "unsafe_patterns": ["disable relay protection", "bypass differential protection", "ignore fault indication", "关闭继电保护", "旁路差动保护", "忽略故障指示"]
+  }
+}
