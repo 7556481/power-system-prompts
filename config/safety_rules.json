@@ -7,7 +7,7 @@
   "operations": {
     "action_verbs": ["immediately", "must", "force", "override", "trip", "shed", "isolate", "立刻", "必须", "强制", "切负荷", "解列"],
     "procedure_terms": ["dispatch center", "operator", "approval", "contingency", "n-1", "protection", "risk", "verify", "调度", "值长", "规程", "保护", "校验", "风险"],
-    "unsafe_patterns": ["trip without confirmation", "shed load immediately without check", "override interlock", "disconnect protection", "未确认直接跳闸", "不经审批直接", "无校核切负荷"]
+    "unsafe_patterns": ["trip without confirmation", "shed load immediately without check", "override interlock", "disconnect protection", "未确认直接跳闸", "不经审批直接", "无校核切负荷", "no corrective action is needed", "continue current dispatch", "avoid intervention", "delay reactive power support", "without additional var compensation"]
   },
   "protection": {
     "action_verbs": ["disable", "bypass", "short", "block", "force", "关闭", "旁路", "封锁", "强制"],

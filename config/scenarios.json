@@ -4,12 +4,12 @@
     "description": "Assess explanatory responses about voltage stability mechanisms and mitigation.",
     "evaluation_focus": ["factual_reliability", "internal_consistency", "operational_safety_risk"],
     "weights": {
-      "factual_reliability": 0.30,
-      "task_alignment": 0.16,
-      "internal_consistency": 0.20,
+      "factual_reliability": 0.24,
+      "task_alignment": 0.14,
+      "internal_consistency": 0.18,
       "interpretability_reviewability": 0.10,
-      "unsupported_content_risk": 0.14,
-      "operational_safety_risk": 0.10
+      "unsupported_content_risk": 0.18,
+      "operational_safety_risk": 0.16
     },
     "citation_strictness": "medium",
     "numeric_profile": "default",
