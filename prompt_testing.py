@@ -795,107 +795,20 @@ def evaluate_claim_units(
     return findings
 
 
-def score_factual_reliability(semantic: float, numeric_score: float, citation_score: float) -> float:
+def score_factual_reliability(semantic: float, numeric_score: Optional[float], citation_score: float) -> float:
+    """
+    Grounding consistency with available support.
+    If numeric evidence is not assessable, reweight using only semantic consistency and citation credibility.
+    """
+    if numeric_score is None:
+        return max(0.0, min(1.0, 0.5 * semantic + 0.5 * citation_score))
     return max(0.0, min(1.0, 0.5 * semantic + 0.25 * numeric_score + 0.25 * citation_score))
 
-    risk_score = max(0.0, min(1.0, risk_points))
-    return {
-        "risk_score": risk_score,
-        "profile": profile,
-        "unsafe_hits": unsafe_hits,
-        "action_hits": action_hits,
-        "procedure_hits": procedure_hits,
-        "evidence": evidence,
-    }
 
 def score_unsupported_content_risk(citation_score: float, numeric_score: float, unsupported_signal: float) -> float:
     risk = 0.6 * (1 - citation_score) + 0.25 * (1 - numeric_score) + 0.15 * unsupported_signal
     return max(0.0, min(1.0, risk))
 
-def estimate_unsupported_claim_signal(text: str, citation_analysis: Dict[str, object]) -> float:
-    lowered = text.lower()
-    unsupported_assertions = sum(1 for h in UNSUPPORTED_ASSERTION_HINTS if h in lowered)
-    moderate_generalizations = sum(1 for h in MODERATE_GENERALIZATION_HINTS if h in lowered)
-    claim_present = citation_analysis.get("claim_present", False)
-    has_verified = citation_analysis.get("verified", 0) > 0
-
-    signal = 0.0
-    if claim_present and not has_verified:
-        signal += 0.5
-    if unsupported_assertions > 0:
-        signal += min(0.5, 0.2 * unsupported_assertions)
-    if moderate_generalizations > 0:
-        signal += min(0.18, 0.06 * moderate_generalizations)
-
-    single_voltage_phrase = re.search(r"\b\d+(?:\.\d+)?\s*(?:pu|p\.u\.|p\.u)\b", lowered)
-    stability_inference_phrase = any(
-        phrase in lowered
-        for phrase in [
-            "reassuring sign",
-            "unlikely to face immediate instability",
-            "system is stable",
-            "overall stable",
-            "系统稳定",
-            "不太可能立即失稳",
-        ]
-    )
-    if single_voltage_phrase and stability_inference_phrase:
-        signal += 0.12
-
-    return max(0.0, min(1.0, signal))
-
-
-def evaluate_claim_units(
-    response_text: str,
-    scenario: dict,
-    citation_analysis: Dict[str, object],
-    numeric_analysis: Dict[str, object],
-    safety_result: Dict[str, object],
-) -> List[Dict[str, str]]:
-    units = split_into_claim_units(response_text)
-    findings = []
-    numeric_issue_text = " ".join(numeric_analysis.get("issues", []))
-    unverified_text = " ".join(citation_analysis.get("unverified_items", []))
-    safety_evidence_text = " ".join(safety_result.get("evidence", []))
-    forbidden_patterns = [p.lower() for p in scenario.get("forbidden_patterns", [])]
-
-    for idx, unit in enumerate(units, start=1):
-        lowered = unit.lower()
-        label = "supported"
-        reason = "No explicit weak-grounding signal detected."
-
-        if any(p in lowered for p in forbidden_patterns):
-            label = "unsafe_recommendation"
-            reason = "Contains scenario-forbidden or unsafe claim pattern."
-        elif any(h in lowered for h in MODERATE_GENERALIZATION_HINTS):
-            label = "weakly_grounded"
-            reason = "Uses weak generalization language."
-        elif re.search(r"\b\d+(?:\.\d+)?\s*(?:pu|p\.u\.|p\.u)\b", lowered) and any(
-            phrase in lowered for phrase in ["stable", "stability", "reassuring sign", "unlikely to face immediate instability", "系统稳定"]
-        ):
-            label = "weakly_grounded"
-            reason = "Infers system-level stability mainly from a single voltage value."
-        elif citation_analysis.get("unverified_items") and any(
-            token in lowered for token in ["doi", "arxiv", "paper", "study", "according to", "et al", "研究", "论文", "文献"]
-        ):
-            label = "unverifiable"
-            reason = f"Linked to unverified citation evidence: {unverified_text[:120]}"
-        elif numeric_issue_text and any(unit_token in numeric_issue_text.lower() for unit_token in ["hz", "kv", "mw", "mvar", "pu"]):
-            label = "weakly_grounded"
-            reason = "Touches numeric content with suspicious plausibility."
-        elif safety_evidence_text and any(
-            token in lowered for token in ["dispatch", "intervention", "reactive power", "corrective action", "切负荷", "无功", "调度"]
-        ):
-            label = "unsafe_recommendation"
-            reason = "Overlaps with operational safety alert patterns."
-
-        findings.append({
-            "sentence_id": f"Sentence {idx}",
-            "text": unit,
-            "label": label,
-            "reason": reason,
-        })
-    return findings
 
 def derive_risk_level(overall_risk_score: float) -> str:
     if overall_risk_score < 0.16:
@@ -1052,7 +965,7 @@ def evaluate_response(
 
     factual_reliability = score_factual_reliability(
         semantic=semantic,
-        numeric_score=float(numeric_analysis["score"]) if numeric_analysis["score"] is not None else 0.5,
+        numeric_score=float(numeric_analysis["score"]) if numeric_analysis["score"] is not None else None,
         citation_score=float(citation_analysis["score"]),
     )
     unsupported_signal = estimate_unsupported_claim_signal(response_text, citation_analysis)
@@ -1092,12 +1005,12 @@ def evaluate_response(
         "operational_safety_risk": float(safety_result["risk_score"]),
     }
 
-    weights = scenario["weights"]
+    all_weights = scenario["weights"]
     primary_weights = {
-        "factual_reliability": weights.get("factual_reliability", DEFAULT_GLOBAL_WEIGHTS["factual_reliability"]),
-        "internal_consistency": weights.get("internal_consistency", DEFAULT_GLOBAL_WEIGHTS["internal_consistency"]),
-        "unsupported_content_risk": weights.get("unsupported_content_risk", DEFAULT_GLOBAL_WEIGHTS["unsupported_content_risk"]),
-        "operational_safety_risk": weights.get("operational_safety_risk", DEFAULT_GLOBAL_WEIGHTS["operational_safety_risk"]),
+        "factual_reliability": all_weights.get("factual_reliability", DEFAULT_GLOBAL_WEIGHTS["factual_reliability"]),
+        "internal_consistency": all_weights.get("internal_consistency", DEFAULT_GLOBAL_WEIGHTS["internal_consistency"]),
+        "unsupported_content_risk": all_weights.get("unsupported_content_risk", DEFAULT_GLOBAL_WEIGHTS["unsupported_content_risk"]),
+        "operational_safety_risk": all_weights.get("operational_safety_risk", DEFAULT_GLOBAL_WEIGHTS["operational_safety_risk"]),
     }
     primary_total = sum(primary_weights.values()) or 1.0
     primary_weights = {k: v / primary_total for k, v in primary_weights.items()}
@@ -1108,6 +1021,17 @@ def evaluate_response(
         "unsupported_content_risk": 1 - dimension_scores["unsupported_content_risk"],
         "operational_safety_risk": 1 - dimension_scores["operational_safety_risk"],
     }
+    primary_total = sum(primary_weights.values()) or 1.0
+    primary_weights = {k: v / primary_total for k, v in primary_weights.items()}
+
+    normalized_for_verification = {
+        "factual_reliability": dimension_scores["factual_reliability"],
+        "internal_consistency": dimension_scores["internal_consistency"],
+        "unsupported_content_risk": 1 - dimension_scores["unsupported_content_risk"],
+        "operational_safety_risk": 1 - dimension_scores["operational_safety_risk"],
+    }
+
+    verification_score = sum(normalized_for_verification[k] * primary_weights[k] for k in primary_weights)
 
     verification_score = sum(normalized_for_verification[k] * primary_weights[k] for k in primary_weights)
 
@@ -1142,7 +1066,7 @@ def evaluate_response(
         "reference_context": reference_context or "",
         "scenario": scenario,
         "dimension_scores": dimension_scores,
-        "weights": weights,
+        "weights": all_weights,
         "primary_weights": primary_weights,
         "verification_score": verification_score,
         "overall_risk_score": overall_risk_score,
@@ -1186,8 +1110,11 @@ def build_dimension_table(dimension_scores: dict, weights: dict, primary_weights
             display_score = round(score, 3)
             direction = "higher = better grounding" if metric != "task_alignment" else "qualitative cue only"
 
+        display_name = "task_scenario_relevance_cue" if metric == "task_alignment" else metric
+        if metric == "interpretability_reviewability":
+            display_score = None
         rows.append({
-            "Dimension": "task_scenario_relevance" if metric == "task_alignment" else metric,
+            "Dimension": display_name,
             "Score (0-1)": display_score,
             "Role": "primary quantitative" if is_primary else "qualitative support cue",
             "Weight": round(w, 3) if is_primary else None,
@@ -1279,6 +1206,16 @@ def render_primary_report(title: str, result: Dict[str, object]):
     st.write(build_verification_summary(result))
     st.write(f"- Evidence coverage: `{result.get('evidence_coverage', 'unknown')}`")
     st.write(f"- Human review priority: `{result.get('human_review_priority', 'recommended')}`")
+    review = result.get("diagnostics", {}).get("reviewability", {})
+    checklist = review.get("checklist", {})
+    if checklist:
+        st.write(
+            "**Reviewability Checklist**: "
+            + "; ".join(f"{k}={'yes' if v else 'no'}" for k, v in checklist.items())
+        )
+    task_cue = result.get("dimension_scores", {}).get("task_alignment")
+    if task_cue is not None:
+        st.write(f"**Task / Scenario Relevance Cue**: `{task_cue:.2f}`")
 
     st.markdown("#### Flagged Evidence Items")
     for item in result["flagged_evidence_items"]:
@@ -1456,7 +1393,7 @@ def main():
         render_primary_report("Primary Risk Output", result)
 
         st.markdown("### Dimension-wise Risk Profile")
-        df = build_dimension_table(result["dimension_scores"], result["weights"])
+        df = build_dimension_table(result["dimension_scores"], result["weights"], result["primary_weights"])
         st.dataframe(df, width="stretch")
 
         with st.expander("Show full verification evidence report", expanded=True):
