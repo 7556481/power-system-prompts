@@ -964,14 +964,6 @@ def evaluate_response(
         numeric_score=float(numeric_analysis["score"]) if numeric_analysis["score"] is not None else None,
         unsupported_signal=unsupported_signal,
     )
-    preliminary_dimension_scores = {
-        "factual_reliability": factual_reliability,
-        "task_alignment": task_alignment,
-        "internal_consistency": logical_score,
-        "interpretability_reviewability": 0.0,
-        "unsupported_content_risk": unsupported_risk,
-        "operational_safety_risk": float(safety_result["risk_score"]),
-    }
 
     claim_findings = evaluate_claim_units(
         response_text=response_text,
@@ -1230,13 +1222,13 @@ def render_diagnostics(result: Dict[str, object]):
     reviewability = diag["reviewability"]
 
     st.markdown("#### Evidence-Based Verification Report")
-    st.write(f"- Semantic consistency: `{diag['semantic_consistency']:.3f}`")
+    st.write(f"- Grounding consistency with reference context: `{diag['semantic_consistency']:.3f}`")
     st.write(
         f"- Citation verifiability cue: score `{citation['score']:.3f}` | status `{citation['citation_status']}` | "
         f"verified `{citation['verified']}` / `{citation['total']}`"
     )
     st.write(
-        f"- Numeric check: `{numeric['note']}` | assessable `{numeric['numeric_assessable']}` | "
+        f"- Coarse numeric sanity check: `{numeric['note']}` | assessable `{numeric['numeric_assessable']}` | "
         f"out-of-range `{numeric['out_of_range']}` / `{numeric['total']}`"
     )
     st.write(f"- Safety risk score: `{safety['risk_score']:.3f}` (profile: {safety['profile']})")
@@ -1253,7 +1245,7 @@ def render_diagnostics(result: Dict[str, object]):
     st.write(f"- Reviewability note: {reviewability['note']}")
 
     if citation.get("unverified_items"):
-        st.write("- Citation-not-verified cues:")
+        st.write("- Citation verifiability cue flags:")
         for item in citation["unverified_items"]:
             st.write(f"  - {item}")
 
