@@ -1,0 +1,98 @@
+{
+  "voltage_stability_interpretation": {
+    "display_name": "Voltage Stability Interpretation",
+    "description": "Assess explanatory responses about voltage stability mechanisms and mitigation.",
+    "evaluation_focus": ["factual_reliability", "internal_consistency", "operational_safety_risk"],
+    "weights": {
+      "factual_reliability": 0.24,
+      "task_alignment": 0.14,
+      "internal_consistency": 0.18,
+      "interpretability_reviewability": 0.10,
+      "unsupported_content_risk": 0.18,
+      "operational_safety_risk": 0.16
+    },
+    "citation_strictness": "medium",
+    "numeric_profile": "default",
+    "safety_profile": "operations"
+  },
+  "fault_analysis_protection": {
+    "display_name": "Fault Analysis / Protection Explanation",
+    "description": "Assess fault analysis and relay/protection explanations in safety-critical contexts.",
+    "evaluation_focus": ["factual_reliability", "operational_safety_risk", "internal_consistency"],
+    "weights": {
+      "factual_reliability": 0.26,
+      "task_alignment": 0.14,
+      "internal_consistency": 0.18,
+      "interpretability_reviewability": 0.08,
+      "unsupported_content_risk": 0.14,
+      "operational_safety_risk": 0.20
+    },
+    "citation_strictness": "medium",
+    "numeric_profile": "default",
+    "safety_profile": "protection"
+  },
+  "dispatch_scheduling_explanation": {
+    "display_name": "Dispatch / Scheduling Explanation",
+    "description": "Assess generation dispatch and scheduling strategy explanations.",
+    "evaluation_focus": ["factual_reliability", "task_alignment", "operational_safety_risk"],
+    "weights": {
+      "factual_reliability": 0.28,
+      "task_alignment": 0.18,
+      "internal_consistency": 0.17,
+      "interpretability_reviewability": 0.10,
+      "unsupported_content_risk": 0.12,
+      "operational_safety_risk": 0.15
+    },
+    "citation_strictness": "low",
+    "numeric_profile": "dispatch",
+    "safety_profile": "operations"
+  },
+  "operational_recommendation": {
+    "display_name": "Power-System Operational Recommendation",
+    "description": "Assess actionable recommendations for operations and control.",
+    "evaluation_focus": ["operational_safety_risk", "factual_reliability", "unsupported_content_risk"],
+    "weights": {
+      "factual_reliability": 0.24,
+      "task_alignment": 0.14,
+      "internal_consistency": 0.16,
+      "interpretability_reviewability": 0.08,
+      "unsupported_content_risk": 0.14,
+      "operational_safety_risk": 0.24
+    },
+    "citation_strictness": "low",
+    "numeric_profile": "operations",
+    "safety_profile": "operations"
+  },
+  "literature_review": {
+    "display_name": "Literature Review in Power Systems",
+    "description": "Assess review-style responses that cite papers, methods, and trends.",
+    "evaluation_focus": ["unsupported_content_risk", "factual_reliability", "task_alignment"],
+    "weights": {
+      "factual_reliability": 0.24,
+      "task_alignment": 0.14,
+      "internal_consistency": 0.14,
+      "interpretability_reviewability": 0.08,
+      "unsupported_content_risk": 0.28,
+      "operational_safety_risk": 0.12
+    },
+    "citation_strictness": "high",
+    "numeric_profile": "default",
+    "safety_profile": "general"
+  },
+  "technical_decision_support": {
+    "display_name": "Technical Explanation for Engineering Decision Support",
+    "description": "Assess engineering-support explanations used by grid operators or planners.",
+    "evaluation_focus": ["factual_reliability", "internal_consistency", "operational_safety_risk"],
+    "weights": {
+      "factual_reliability": 0.28,
+      "task_alignment": 0.16,
+      "internal_consistency": 0.18,
+      "interpretability_reviewability": 0.12,
+      "unsupported_content_risk": 0.12,
+      "operational_safety_risk": 0.14
+    },
+    "citation_strictness": "medium",
+    "numeric_profile": "default",
+    "safety_profile": "operations"
+  }
+}
