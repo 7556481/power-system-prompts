@@ -528,6 +528,7 @@ def score_task_alignment(text: str, prompt: Optional[str], scenario: dict) -> fl
         return max(0.0, min(1.0, 0.45 + 0.55 * domain))
     kw = score_relevance_keyword(text, prompt)
     sem = score_relevance_semantic(text, prompt)
+    domain = score_domain_coverage(text)
     if sem is None:
         return max(0.0, min(1.0, 0.7 * kw + 0.3 * domain))
     return max(0.0, min(1.0, 0.35 * kw + 0.5 * sem + 0.15 * domain))
@@ -1020,6 +1021,17 @@ def evaluate_response(
         "unsupported_content_risk": 1 - dimension_scores["unsupported_content_risk"],
         "operational_safety_risk": 1 - dimension_scores["operational_safety_risk"],
     }
+    primary_total = sum(primary_weights.values()) or 1.0
+    primary_weights = {k: v / primary_total for k, v in primary_weights.items()}
+
+    normalized_for_verification = {
+        "factual_reliability": dimension_scores["factual_reliability"],
+        "internal_consistency": dimension_scores["internal_consistency"],
+        "unsupported_content_risk": 1 - dimension_scores["unsupported_content_risk"],
+        "operational_safety_risk": 1 - dimension_scores["operational_safety_risk"],
+    }
+
+    verification_score = sum(normalized_for_verification[k] * primary_weights[k] for k in primary_weights)
 
     verification_score = sum(normalized_for_verification[k] * primary_weights[k] for k in primary_weights)
 
