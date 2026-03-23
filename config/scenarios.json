@@ -1,98 +1,94 @@
 {
   "voltage_stability_interpretation": {
     "display_name": "Voltage Stability Interpretation",
-    "description": "Assess explanatory responses about voltage stability mechanisms and mitigation.",
-    "evaluation_focus": ["factual_reliability", "internal_consistency", "operational_safety_risk"],
+    "description": "Assess post-generation explanations of voltage stability mechanisms, limits, and mitigation implications.",
+    "evaluation_focus": ["factual_reliability", "unsupported_content_risk", "operational_safety_risk"],
     "weights": {
       "factual_reliability": 0.24,
-      "task_alignment": 0.14,
-      "internal_consistency": 0.18,
-      "interpretability_reviewability": 0.10,
+      "task_alignment": 0.12,
+      "internal_consistency": 0.16,
+      "interpretability_reviewability": 0.08,
       "unsupported_content_risk": 0.18,
-      "operational_safety_risk": 0.16
+      "operational_safety_risk": 0.22
     },
     "citation_strictness": "medium",
     "numeric_profile": "default",
-    "safety_profile": "operations"
+    "safety_profile": "operations",
+    "key_constraints": [
+      "a single bus voltage value does not guarantee system-wide voltage stability",
+      "system-level stability conclusions require broader conditions such as contingency, reactive reserve, and topology"
+    ],
+    "caution_required_patterns": ["contingency analysis", "reactive reserve", "further study", "validation", "operator review"],
+    "forbidden_patterns": ["system is fully stable from one voltage value", "grid is secure without further analysis"],
+    "expected_evidence_types": ["numeric_value", "engineering_constraint", "operational_caution"]
   },
   "fault_analysis_protection": {
     "display_name": "Fault Analysis / Protection Explanation",
-    "description": "Assess fault analysis and relay/protection explanations in safety-critical contexts.",
-    "evaluation_focus": ["factual_reliability", "operational_safety_risk", "internal_consistency"],
+    "description": "Assess protection-oriented explanations for fault conditions, relay behavior, and secure handling.",
+    "evaluation_focus": ["operational_safety_risk", "factual_reliability", "internal_consistency"],
     "weights": {
-      "factual_reliability": 0.26,
-      "task_alignment": 0.14,
-      "internal_consistency": 0.18,
+      "factual_reliability": 0.22,
+      "task_alignment": 0.10,
+      "internal_consistency": 0.16,
       "interpretability_reviewability": 0.08,
-      "unsupported_content_risk": 0.14,
-      "operational_safety_risk": 0.20
+      "unsupported_content_risk": 0.18,
+      "operational_safety_risk": 0.26
     },
     "citation_strictness": "medium",
     "numeric_profile": "default",
-    "safety_profile": "protection"
+    "safety_profile": "protection",
+    "key_constraints": [
+      "relay and breaker actions must follow coordination and selectivity principles",
+      "unsafe bypassing of protection is unacceptable"
+    ],
+    "caution_required_patterns": ["relay coordination", "test plan", "two-person check", "protection engineer review"],
+    "forbidden_patterns": ["disable protection", "ignore fault indication"],
+    "expected_evidence_types": ["protection_rule", "fault_context", "procedural_caution"]
   },
   "dispatch_scheduling_explanation": {
     "display_name": "Dispatch / Scheduling Explanation",
-    "description": "Assess generation dispatch and scheduling strategy explanations.",
+    "description": "Assess explanations for dispatch, reserve allocation, and scheduling recommendations.",
     "evaluation_focus": ["factual_reliability", "task_alignment", "operational_safety_risk"],
     "weights": {
-      "factual_reliability": 0.28,
-      "task_alignment": 0.18,
-      "internal_consistency": 0.17,
-      "interpretability_reviewability": 0.10,
-      "unsupported_content_risk": 0.12,
-      "operational_safety_risk": 0.15
+      "factual_reliability": 0.24,
+      "task_alignment": 0.12,
+      "internal_consistency": 0.16,
+      "interpretability_reviewability": 0.08,
+      "unsupported_content_risk": 0.18,
+      "operational_safety_risk": 0.22
     },
     "citation_strictness": "low",
     "numeric_profile": "dispatch",
-    "safety_profile": "operations"
+    "safety_profile": "operations",
+    "key_constraints": [
+      "dispatch explanations should consider reserve, security constraints, and feasibility",
+      "no-action recommendations require procedural caution"
+    ],
+    "caution_required_patterns": ["reserve margin", "security constraint", "operator approval", "contingency"],
+    "forbidden_patterns": ["continue dispatch without review", "no urgent corrective action is required without evidence"],
+    "expected_evidence_types": ["dispatch_constraint", "numeric_value", "operational_caution"]
   },
-  "operational_recommendation": {
-    "display_name": "Power-System Operational Recommendation",
-    "description": "Assess actionable recommendations for operations and control.",
-    "evaluation_focus": ["operational_safety_risk", "factual_reliability", "unsupported_content_risk"],
-    "weights": {
-      "factual_reliability": 0.24,
-      "task_alignment": 0.14,
-      "internal_consistency": 0.16,
-      "interpretability_reviewability": 0.08,
-      "unsupported_content_risk": 0.14,
-      "operational_safety_risk": 0.24
-    },
-    "citation_strictness": "low",
-    "numeric_profile": "operations",
-    "safety_profile": "operations"
-  },
-  "literature_review": {
+  "literature_review_power_systems": {
     "display_name": "Literature Review in Power Systems",
-    "description": "Assess review-style responses that cite papers, methods, and trends.",
+    "description": "Assess literature-review style answers summarizing power-system research and citations.",
     "evaluation_focus": ["unsupported_content_risk", "factual_reliability", "task_alignment"],
     "weights": {
-      "factual_reliability": 0.24,
-      "task_alignment": 0.14,
+      "factual_reliability": 0.26,
+      "task_alignment": 0.12,
       "internal_consistency": 0.14,
-      "interpretability_reviewability": 0.08,
-      "unsupported_content_risk": 0.28,
-      "operational_safety_risk": 0.12
+      "interpretability_reviewability": 0.10,
+      "unsupported_content_risk": 0.24,
+      "operational_safety_risk": 0.14
     },
     "citation_strictness": "high",
     "numeric_profile": "default",
-    "safety_profile": "general"
-  },
-  "technical_decision_support": {
-    "display_name": "Technical Explanation for Engineering Decision Support",
-    "description": "Assess engineering-support explanations used by grid operators or planners.",
-    "evaluation_focus": ["factual_reliability", "internal_consistency", "operational_safety_risk"],
-    "weights": {
-      "factual_reliability": 0.28,
-      "task_alignment": 0.16,
-      "internal_consistency": 0.18,
-      "interpretability_reviewability": 0.12,
-      "unsupported_content_risk": 0.12,
-      "operational_safety_risk": 0.14
-    },
-    "citation_strictness": "medium",
-    "numeric_profile": "default",
-    "safety_profile": "operations"
+    "safety_profile": "general",
+    "key_constraints": [
+      "citations should be verifiable and non-fabricated",
+      "method summaries should distinguish evidence from speculation"
+    ],
+    "caution_required_patterns": ["limitation", "future work", "dataset", "validation"],
+    "forbidden_patterns": ["fabricated doi", "invented paper title"],
+    "expected_evidence_types": ["citation", "method_claim", "limitation_statement"]
   }
 }
