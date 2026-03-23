@@ -1,0 +1,14 @@
+[
+  "voltage stability", "frequency stability", "rotor angle stability", "transient stability",
+  "small-signal stability", "voltage collapse", "load forecasting", "power flow", "optimal power flow",
+  "state estimation", "unit commitment", "economic dispatch", "contingency analysis", "n-1 security",
+  "reactive power", "power factor", "bus", "line", "transformer", "generator", "excitation system",
+  "AVR", "PSS", "AGC", "primary frequency control", "secondary frequency control", "tertiary control",
+  "fault", "short circuit", "relay protection", "distance protection", "differential protection",
+  "load shedding", "under-frequency", "under-voltage", "islanding", "black start", "HVDC", "FACTS",
+  "SVC", "STATCOM", "PMU", "SCADA", "harmonics", "power quality", "renewable integration",
+  "microgrid", "transmission network", "distribution network", "voltage regulation", "OLTC", "substation",
+  "阻抗", "电压稳定", "频率稳定", "暂态稳定", "小扰动稳定", "电压崩溃", "潮流", "最优潮流",
+  "状态估计", "机组组合", "经济调度", "无功功率", "功率因数", "一次调频", "二次调频",
+  "短路", "继电保护", "母线", "变压器", "发电机", "配电网", "输电网", "电能质量", "孤岛"
+]
