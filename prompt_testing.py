@@ -66,7 +66,7 @@ DEFAULT_GLOBAL_WEIGHTS = {
     "factual_reliability": 0.24,
     "task_alignment": 0.12,
     "internal_consistency": 0.16,
-    "interpretability_reviewability": 0.10,
+    "reviewability": 0.10,
     "unsupported_content_risk": 0.18,
     "operational_safety_risk": 0.20,
 }
@@ -86,7 +86,7 @@ DEFAULT_SCENARIOS = {
             "factual_reliability": 0.24,
             "task_alignment": 0.12,
             "internal_consistency": 0.16,
-            "interpretability_reviewability": 0.08,
+            "reviewability": 0.08,
             "unsupported_content_risk": 0.18,
             "operational_safety_risk": 0.22,
         },
@@ -109,7 +109,7 @@ DEFAULT_SCENARIOS = {
             "factual_reliability": 0.22,
             "task_alignment": 0.10,
             "internal_consistency": 0.16,
-            "interpretability_reviewability": 0.08,
+            "reviewability": 0.08,
             "unsupported_content_risk": 0.18,
             "operational_safety_risk": 0.26,
         },
@@ -132,7 +132,7 @@ DEFAULT_SCENARIOS = {
             "factual_reliability": 0.24,
             "task_alignment": 0.12,
             "internal_consistency": 0.16,
-            "interpretability_reviewability": 0.08,
+            "reviewability": 0.08,
             "unsupported_content_risk": 0.18,
             "operational_safety_risk": 0.22,
         },
@@ -155,7 +155,7 @@ DEFAULT_SCENARIOS = {
             "factual_reliability": 0.26,
             "task_alignment": 0.12,
             "internal_consistency": 0.14,
-            "interpretability_reviewability": 0.10,
+            "reviewability": 0.10,
             "unsupported_content_risk": 0.24,
             "operational_safety_risk": 0.14,
         },
@@ -239,7 +239,7 @@ DIMENSION_DESCRIPTIONS = {
     "factual_reliability": "Grounding consistency with available support, based on reference-context consistency, coarse numeric sanity checking, and citation verifiability cues. This is not full factual truth verification.",
     "task_alignment": "Task / scenario relevance cue based on prompt-response alignment and scenario terminology cues. This is qualitative support, not a primary risk metric.",
     "internal_consistency": "Lightweight contradiction cue based on sentence-level consistency signals. This is not a formal logic proof.",
-    "interpretability_reviewability": "Human-review support checklist covering assumptions, uncertainty, cautionary language, and review hooks rather than a primary score.",
+    "reviewability": "Human-review support checklist covering assumptions, uncertainty, cautionary language, and review hooks rather than a primary score.",
     "unsupported_content_risk": "Risk of weakly grounded, unverifiable, or fabricated content, driven mainly by unsupported claims, unverifiable citations, and scenario-specific weak grounding warnings.",
     "operational_safety_risk": "Operational safety evidence severity cue based on scenario-specific unsafe-pattern and procedural-grounding checks. This is evidence-driven and qualitative (none/low/medium/high), not a continuous score.",
 }
@@ -257,7 +257,10 @@ def _load_json_config(file_name: str, default):
 
 
 def normalize_weights(weights: Dict[str, float]) -> Dict[str, float]:
-    merged = {**DEFAULT_GLOBAL_WEIGHTS, **(weights or {})}
+    source = dict(weights or {})
+    if "interpretability_reviewability" in source and "reviewability" not in source:
+        source["reviewability"] = source.pop("interpretability_reviewability")
+    merged = {**DEFAULT_GLOBAL_WEIGHTS, **source}
     total = sum(max(0.0, float(v)) for v in merged.values())
     if total <= 0:
         return DEFAULT_GLOBAL_WEIGHTS.copy()
@@ -1022,7 +1025,7 @@ def evaluate_response(
         "factual_reliability": factual_reliability,
         "task_alignment": task_alignment,
         "internal_consistency": logical_score,
-        "interpretability_reviewability": None,
+        "reviewability": None,
         "unsupported_content_risk": unsupported_risk,
         "operational_safety_risk": None,
     }
@@ -1117,7 +1120,7 @@ def build_dimension_table(dimension_scores: dict, weights: dict, primary_weights
             direction = "higher = better grounding" if metric != "task_alignment" else "qualitative cue only"
 
         display_name = format_dimension_label(metric)
-        if metric in {"interpretability_reviewability", "operational_safety_risk"}:
+        if metric in {"reviewability", "operational_safety_risk"}:
             display_score = None
         rows.append({
             "Dimension": display_name,
@@ -1360,7 +1363,7 @@ def main():
             st.write(f"- **{format_dimension_label(metric)}** → `{w:.2f}`")
         st.caption(
             "task alignment → qualitative support cue\n"
-            "interpretability reviewability → qualitative support cue\n"
+            "reviewability → qualitative support cue\n"
             "operational safety risk → evidence-based escalation cue"
         )
 
