@@ -71,6 +71,12 @@ DEFAULT_GLOBAL_WEIGHTS = {
     "operational_safety_risk": 0.20,
 }
 
+PRIMARY_AGGREGATION_WEIGHTS = {
+    "factual_reliability": 0.40,
+    "internal_consistency": 0.30,
+    "unsupported_content_risk": 0.30,
+}
+
 DEFAULT_SCENARIOS = {
     "voltage_stability_interpretation": {
         "display_name": "Voltage Stability Interpretation",
@@ -256,6 +262,10 @@ def normalize_weights(weights: Dict[str, float]) -> Dict[str, float]:
     if total <= 0:
         return DEFAULT_GLOBAL_WEIGHTS.copy()
     return {k: max(0.0, float(v)) / total for k, v in merged.items()}
+
+
+def format_dimension_label(metric: str) -> str:
+    return metric.replace("_", " ")
 
 
 @st.cache_data(show_spinner=False)
@@ -910,7 +920,6 @@ def derive_human_review_priority(
 ) -> str:
     high_count = sum(1 for item in flagged_items if item.get("severity") == "high")
     medium_count = sum(1 for item in flagged_items if item.get("severity") == "medium")
-    safety_heavy = scenario.get("weights", {}).get("operational_safety_risk", 0.0) >= 0.22
     safety_severity = str(safety_result.get("severity", "none"))
 
     if safety_severity == "high":
@@ -918,7 +927,7 @@ def derive_human_review_priority(
 
     if risk_level == "High" or high_count >= 2:
         return "required_before_operational_use"
-    if risk_level == "Medium" and (safety_heavy or medium_count >= 2):
+    if risk_level == "Medium" and medium_count >= 2:
         return "strongly_recommended"
     if risk_level == "Medium" or medium_count >= 1:
         return "recommended"
@@ -1020,13 +1029,7 @@ def evaluate_response(
 
     # Primary quantitative aggregation uses only three dimensions.
     all_weights = scenario["weights"]
-    primary_weights = {
-        "factual_reliability": all_weights.get("factual_reliability", DEFAULT_GLOBAL_WEIGHTS["factual_reliability"]),
-        "internal_consistency": all_weights.get("internal_consistency", DEFAULT_GLOBAL_WEIGHTS["internal_consistency"]),
-        "unsupported_content_risk": all_weights.get("unsupported_content_risk", DEFAULT_GLOBAL_WEIGHTS["unsupported_content_risk"]),
-    }
-    primary_total = sum(primary_weights.values()) or 1.0
-    primary_weights = {k: v / primary_total for k, v in primary_weights.items()}
+    primary_weights = PRIMARY_AGGREGATION_WEIGHTS.copy()
 
     normalized_primary_inputs = {
         "factual_reliability": dimension_scores["factual_reliability"],
@@ -1097,6 +1100,9 @@ def build_dimension_table(dimension_scores: dict, weights: dict, primary_weights
     for metric, score in dimension_scores.items():
         is_primary = metric in primary_weights
         w = primary_weights.get(metric, 0.0) if is_primary else 0.0
+        role = "primary quantitative" if is_primary else "qualitative support cue"
+        if metric == "operational_safety_risk":
+            role = "escalation / safety cue"
         if score is None:
             contribution = None
             display_score = None
@@ -1110,13 +1116,13 @@ def build_dimension_table(dimension_scores: dict, weights: dict, primary_weights
             display_score = round(score, 3)
             direction = "higher = better grounding" if metric != "task_alignment" else "qualitative cue only"
 
-        display_name = "task_scenario_relevance_cue" if metric == "task_alignment" else metric
-        if metric == "interpretability_reviewability":
+        display_name = format_dimension_label(metric)
+        if metric in {"interpretability_reviewability", "operational_safety_risk"}:
             display_score = None
         rows.append({
             "Dimension": display_name,
             "Score (0-1)": display_score,
-            "Role": "primary quantitative" if is_primary else "qualitative support cue",
+            "Role": role,
             "Weight": round(w, 3) if is_primary else None,
             "Weighted Contribution": round(contribution, 3) if contribution is not None else None,
             "Interpretation": DIMENSION_DESCRIPTIONS.get(metric, ""),
@@ -1346,12 +1352,17 @@ def main():
 
         st.markdown("---")
         st.subheader("Scenario Focus")
-        st.write(", ".join(selected_scenario.get("evaluation_focus", [])))
+        st.write(", ".join(format_dimension_label(m) for m in selected_scenario.get("evaluation_focus", [])))
 
         st.markdown("---")
-        st.subheader("Scenario-aware Weights")
-        for metric, w in selected_scenario.get("weights", {}).items():
-            st.write(f"- **{metric}** → `{w:.2f}`")
+        st.subheader("Primary Aggregation Weights")
+        for metric, w in PRIMARY_AGGREGATION_WEIGHTS.items():
+            st.write(f"- **{format_dimension_label(metric)}** → `{w:.2f}`")
+        st.caption(
+            "task alignment → qualitative support cue\n"
+            "interpretability reviewability → qualitative support cue\n"
+            "operational safety risk → evidence-based escalation cue"
+        )
 
         if selected_scenario.get("key_constraints"):
             st.markdown("---")
