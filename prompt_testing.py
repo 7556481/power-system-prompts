@@ -68,6 +68,12 @@ PRIMARY_AGGREGATION_WEIGHTS = {
     "unsupported_content_risk": 0.30,
 }
 
+PRIMARY_AGGREGATION_WEIGHTS = {
+    "factual_reliability": 0.40,
+    "internal_consistency": 0.30,
+    "unsupported_content_risk": 0.30,
+}
+
 DEFAULT_SCENARIOS = {
     "voltage_stability_interpretation": {
         "display_name": "Voltage Stability Interpretation",
@@ -213,6 +219,10 @@ def _load_json_config(file_name: str, default):
             return json.load(f)
     except Exception:
         return default
+
+
+def format_dimension_label(metric: str) -> str:
+    return metric.replace("_", " ")
 
 
 def format_dimension_label(metric: str) -> str:
