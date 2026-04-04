@@ -62,13 +62,10 @@ and present methods, limitations, and evidence in a traceable way.
 """.strip(),
 }
 
-DEFAULT_GLOBAL_WEIGHTS = {
-    "factual_reliability": 0.24,
-    "task_alignment": 0.12,
-    "internal_consistency": 0.16,
-    "reviewability": 0.10,
-    "unsupported_content_risk": 0.18,
-    "operational_safety_risk": 0.20,
+PRIMARY_AGGREGATION_WEIGHTS = {
+    "factual_reliability": 0.40,
+    "internal_consistency": 0.30,
+    "unsupported_content_risk": 0.30,
 }
 
 PRIMARY_AGGREGATION_WEIGHTS = {
@@ -82,14 +79,6 @@ DEFAULT_SCENARIOS = {
         "display_name": "Voltage Stability Interpretation",
         "description": "Assess post-generation explanations of voltage stability mechanisms, limits, and mitigation implications.",
         "evaluation_focus": ["factual_reliability", "unsupported_content_risk", "operational_safety_risk"],
-        "weights": {
-            "factual_reliability": 0.24,
-            "task_alignment": 0.12,
-            "internal_consistency": 0.16,
-            "reviewability": 0.08,
-            "unsupported_content_risk": 0.18,
-            "operational_safety_risk": 0.22,
-        },
         "citation_strictness": "medium",
         "numeric_profile": "default",
         "safety_profile": "operations",
@@ -105,14 +94,6 @@ DEFAULT_SCENARIOS = {
         "display_name": "Fault Analysis / Protection Explanation",
         "description": "Assess protection-oriented explanations for fault conditions, relay behavior, and secure handling.",
         "evaluation_focus": ["operational_safety_risk", "factual_reliability", "internal_consistency"],
-        "weights": {
-            "factual_reliability": 0.22,
-            "task_alignment": 0.10,
-            "internal_consistency": 0.16,
-            "reviewability": 0.08,
-            "unsupported_content_risk": 0.18,
-            "operational_safety_risk": 0.26,
-        },
         "citation_strictness": "medium",
         "numeric_profile": "default",
         "safety_profile": "protection",
@@ -128,14 +109,6 @@ DEFAULT_SCENARIOS = {
         "display_name": "Dispatch / Scheduling Explanation",
         "description": "Assess explanations for dispatch, reserve allocation, and scheduling recommendations.",
         "evaluation_focus": ["factual_reliability", "task_alignment", "operational_safety_risk"],
-        "weights": {
-            "factual_reliability": 0.24,
-            "task_alignment": 0.12,
-            "internal_consistency": 0.16,
-            "reviewability": 0.08,
-            "unsupported_content_risk": 0.18,
-            "operational_safety_risk": 0.22,
-        },
         "citation_strictness": "low",
         "numeric_profile": "dispatch",
         "safety_profile": "operations",
@@ -151,14 +124,6 @@ DEFAULT_SCENARIOS = {
         "display_name": "Literature Review in Power Systems",
         "description": "Assess literature-review style answers summarizing power-system research and citations.",
         "evaluation_focus": ["unsupported_content_risk", "factual_reliability", "task_alignment"],
-        "weights": {
-            "factual_reliability": 0.26,
-            "task_alignment": 0.12,
-            "internal_consistency": 0.14,
-            "reviewability": 0.10,
-            "unsupported_content_risk": 0.24,
-            "operational_safety_risk": 0.14,
-        },
         "citation_strictness": "high",
         "numeric_profile": "default",
         "safety_profile": "general",
@@ -256,15 +221,8 @@ def _load_json_config(file_name: str, default):
         return default
 
 
-def normalize_weights(weights: Dict[str, float]) -> Dict[str, float]:
-    source = dict(weights or {})
-    if "interpretability_reviewability" in source and "reviewability" not in source:
-        source["reviewability"] = source.pop("interpretability_reviewability")
-    merged = {**DEFAULT_GLOBAL_WEIGHTS, **source}
-    total = sum(max(0.0, float(v)) for v in merged.values())
-    if total <= 0:
-        return DEFAULT_GLOBAL_WEIGHTS.copy()
-    return {k: max(0.0, float(v)) / total for k, v in merged.items()}
+def format_dimension_label(metric: str) -> str:
+    return metric.replace("_", " ")
 
 
 def format_dimension_label(metric: str) -> str:
@@ -277,7 +235,7 @@ def load_scenarios() -> Dict[str, dict]:
     scenarios = {}
     for scenario_id, scenario in raw.items():
         merged = {**DEFAULT_SCENARIOS.get(scenario_id, {}), **scenario}
-        merged["weights"] = normalize_weights(merged.get("weights", {}))
+        merged.pop("weights", None)
         merged.setdefault("key_constraints", [])
         merged.setdefault("caution_required_patterns", [])
         merged.setdefault("forbidden_patterns", [])
@@ -1031,7 +989,6 @@ def evaluate_response(
     }
 
     # Primary quantitative aggregation uses only three dimensions.
-    all_weights = scenario["weights"]
     primary_weights = PRIMARY_AGGREGATION_WEIGHTS.copy()
 
     normalized_primary_inputs = {
@@ -1072,7 +1029,7 @@ def evaluate_response(
         "reference_context": reference_context or "",
         "scenario": scenario,
         "dimension_scores": dimension_scores,
-        "weights": all_weights,
+        "weights": PRIMARY_AGGREGATION_WEIGHTS.copy(),
         "primary_weights": primary_weights,
         "verification_score": verification_score,
         "overall_risk_score": overall_risk_score,
