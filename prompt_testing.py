@@ -1157,20 +1157,29 @@ def build_verification_summary(result: Dict[str, object]) -> str:
 
 
 def summarize_claim_findings(claim_findings: List[Dict[str, str]]) -> Dict[str, object]:
+    baseline_supported_reason = "no explicit weak-grounding signal detected."
     risky_reason_tokens = ["unsafe", "unverifiable", "weak", "contradiction", "risk", "warning", "out-of-range"]
     flagged_items = []
+    baseline_supported_count = 0
+    borderline_count = 0
     for item in claim_findings:
         label = str(item.get("label", ""))
-        reason = str(item.get("reason", "")).lower()
+        reason = str(item.get("reason", "")).strip().lower()
+        if label == "supported" and reason == baseline_supported_reason:
+            baseline_supported_count += 1
+            continue
+        if label == "supported":
+            borderline_count += 1
         if label != "supported" or any(token in reason for token in risky_reason_tokens):
             flagged_items.append(item)
     total = len(claim_findings)
     flagged = len(flagged_items)
-    supported = max(0, total - flagged)
+    supported = baseline_supported_count
     return {
         "total": total,
         "flagged": flagged,
         "supported": supported,
+        "borderline": borderline_count,
         "flagged_items": flagged_items,
     }
 
@@ -1233,18 +1242,14 @@ def render_key_evidence_and_alerts(result: Dict[str, object], top_n: int = 5):
             st.write(f"  - {reason}")
 
 
-def render_flagged_claims_only(result: Dict[str, object]):
-    st.markdown("### Flagged Claims Only")
+def render_claim_level_summary(result: Dict[str, object]):
     claim_summary = summarize_claim_findings(result.get("claim_findings", []))
     st.write(
-        f"{claim_summary['total']} statements reviewed; {claim_summary['flagged']} flagged for review; "
-        f"{claim_summary['supported']} without explicit weak-grounding signals."
+        f"Claim-level summary: {claim_summary['total']} statements reviewed; "
+        f"{claim_summary['flagged']} highlighted as risk-relevant; "
+        f"{claim_summary['supported']} showed no explicit weak-grounding signal; "
+        f"{claim_summary['borderline']} borderline for follow-up."
     )
-    if not claim_summary["flagged_items"]:
-        st.write("- No flagged claim-level cues were detected.")
-        return
-    for finding in claim_summary["flagged_items"]:
-        st.write(f"- {finding['sentence_id']}: {finding['label']} — {finding['reason']}")
 
 
 def render_reviewability_checklist(checklist: Dict[str, bool]):
@@ -1252,7 +1257,7 @@ def render_reviewability_checklist(checklist: Dict[str, bool]):
         st.write("- Reviewability checklist unavailable.")
         return
     label_map = {
-        "assumptions_explicit": "Assumptions explicit",
+        "assumptions_explicit": "Assumptions made explicit",
         "uncertainty_acknowledged": "Uncertainty acknowledged",
         "cautionary_language_present": "Cautionary language present",
         "review_hooks_present": "Review hooks present",
@@ -1260,6 +1265,17 @@ def render_reviewability_checklist(checklist: Dict[str, bool]):
     for key, label in label_map.items():
         value = checklist.get(key, False)
         st.write(f"- {label}: {'Yes' if value else 'No'}")
+
+
+def build_reviewability_interpretation(checklist: Dict[str, bool]) -> str:
+    if not checklist:
+        return "Reviewability signals are unavailable for this response."
+    if checklist.get("uncertainty_acknowledged") and checklist.get("cautionary_language_present"):
+        return "This response is reviewable and communicates uncertainty and procedural caution clearly."
+    return (
+        "This suggests that the response remains reviewable, but does not communicate uncertainty "
+        "or procedural caution sufficiently."
+    )
 
 
 def render_primary_report(title: str, result: Dict[str, object]):
@@ -1287,6 +1303,7 @@ def render_primary_report(title: str, result: Dict[str, object]):
     checklist = review.get("checklist", {})
     st.write("**Reviewability Checklist**")
     render_reviewability_checklist(checklist)
+    st.write(build_reviewability_interpretation(checklist))
     task_cue = result.get("dimension_scores", {}).get("task_alignment")
     if task_cue is not None:
         task_cue_label = interpret_task_alignment_cue(task_cue)
@@ -1320,6 +1337,7 @@ def render_detailed_diagnostics(result: Dict[str, object]):
     checklist = reviewability["checklist"]
     st.write("- Reviewability checklist:")
     render_reviewability_checklist(checklist)
+    st.write(f"- Reviewability interpretation: {build_reviewability_interpretation(checklist)}")
     st.write(f"- Reviewability note: {reviewability['note']}")
 
     if citation.get("unverified_items"):
@@ -1336,6 +1354,18 @@ def render_detailed_diagnostics(result: Dict[str, object]):
         st.write("- Safety alerts:")
         for e in safety["evidence"]:
             st.write(f"  - {e}")
+
+    claim_summary = summarize_claim_findings(result.get("claim_findings", []))
+    st.write("- Highlighted claim-level findings:")
+    if claim_summary["flagged_items"]:
+        for finding in claim_summary["flagged_items"]:
+            st.write(f"  - {finding['sentence_id']}: {finding['label']} — {finding['reason']}")
+    else:
+        st.write("  - No highlighted risky/borderline claim-level findings.")
+
+    with st.expander("Full statement-by-statement audit", expanded=False):
+        for finding in result.get("claim_findings", []):
+            st.write(f"- {finding['sentence_id']}: {finding['label']} — {finding['reason']}")
 
 
 def call_local_model(prompt: str) -> str:
@@ -1467,7 +1497,7 @@ def main():
             st.dataframe(df, width="stretch")
 
         render_key_evidence_and_alerts(result)
-        render_flagged_claims_only(result)
+        render_claim_level_summary(result)
 
         with st.expander("Show detailed diagnostics", expanded=False):
             render_detailed_diagnostics(result)
