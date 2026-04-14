@@ -68,12 +68,6 @@ PRIMARY_AGGREGATION_WEIGHTS = {
     "unsupported_content_risk": 0.30,
 }
 
-PRIMARY_AGGREGATION_WEIGHTS = {
-    "factual_reliability": 0.40,
-    "internal_consistency": 0.30,
-    "unsupported_content_risk": 0.30,
-}
-
 DEFAULT_SCENARIOS = {
     "voltage_stability_interpretation": {
         "display_name": "Voltage Stability Interpretation",
@@ -219,10 +213,6 @@ def _load_json_config(file_name: str, default):
             return json.load(f)
     except Exception:
         return default
-
-
-def format_dimension_label(metric: str) -> str:
-    return metric.replace("_", " ")
 
 
 def format_dimension_label(metric: str) -> str:
@@ -1166,6 +1156,112 @@ def build_verification_summary(result: Dict[str, object]) -> str:
     return summary
 
 
+def summarize_claim_findings(claim_findings: List[Dict[str, str]]) -> Dict[str, object]:
+    risky_reason_tokens = ["unsafe", "unverifiable", "weak", "contradiction", "risk", "warning", "out-of-range"]
+    flagged_items = []
+    for item in claim_findings:
+        label = str(item.get("label", ""))
+        reason = str(item.get("reason", "")).lower()
+        if label != "supported" or any(token in reason for token in risky_reason_tokens):
+            flagged_items.append(item)
+    total = len(claim_findings)
+    flagged = len(flagged_items)
+    supported = max(0, total - flagged)
+    return {
+        "total": total,
+        "flagged": flagged,
+        "supported": supported,
+        "flagged_items": flagged_items,
+    }
+
+
+def build_executive_interpretation(result: Dict[str, object]) -> str:
+    risk_level = result.get("risk_level", "Unknown")
+    risk_score = float(result.get("overall_risk_score", 0.0))
+    review_priority = result.get("human_review_priority", "recommended")
+    safety_severity = result.get("diagnostics", {}).get("safety", {}).get("severity", "none")
+    flagged_items = result.get("flagged_evidence_items", [])
+    top_flags = sorted(
+        flagged_items,
+        key=lambda item: {"high": 0, "medium": 1, "low": 2}.get(str(item.get("severity", "")).lower(), 3),
+    )[:2]
+    top_flag_text = "; ".join(item.get("detail", "") for item in top_flags) if top_flags else "No major evidence flags were triggered."
+    escalation = "Safety-sensitive escalation cues affected interpretation." if result.get("override_reasons") else "No escalation override was applied."
+    acceptability = (
+        "This output should not be accepted for operational use without human review."
+        if review_priority in {"required_before_operational_use", "strongly_recommended"}
+        else "This output may be used with routine review safeguards."
+    )
+    return (
+        f"The assessed response is **{risk_level}** risk (score `{risk_score:.2f}`) with review priority "
+        f"`{review_priority}`. The most salient concerns are: {top_flag_text} "
+        f"Operational safety severity is `{safety_severity}`. {escalation} {acceptability}"
+    )
+
+
+def render_top_assessment_signals(result: Dict[str, object]):
+    st.markdown("### Top Assessment Signals")
+    scores = result.get("dimension_scores", {})
+    factual = float(scores.get("factual_reliability", 0.0))
+    unsupported = float(scores.get("unsupported_content_risk", 0.0))
+    safety_severity = result.get("diagnostics", {}).get("safety", {}).get("severity", "none")
+    review = result.get("diagnostics", {}).get("reviewability", {}).get("checklist", {})
+    review_hits = sum(1 for value in review.values() if value) if review else 0
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("factual reliability", f"{factual:.2f}")
+    c2.metric("unsupported content risk", f"{unsupported:.2f}")
+    c3.metric("operational safety severity", str(safety_severity))
+    c4.metric("reviewability signals", f"{review_hits}/{len(review) if review else 0}")
+
+
+def render_key_evidence_and_alerts(result: Dict[str, object], top_n: int = 5):
+    st.markdown("### Key Evidence and Alerts")
+    items = result.get("flagged_evidence_items", [])
+    items_sorted = sorted(
+        items,
+        key=lambda item: {"high": 0, "medium": 1, "low": 2}.get(str(item.get("severity", "")).lower(), 3),
+    )
+    top_items = items_sorted[:top_n]
+    if not top_items:
+        st.write("- No significant evidence alerts were triggered.")
+    for item in top_items:
+        sev = str(item.get("severity", "")).upper()
+        st.write(f"- [{sev}] {item.get('type', 'evidence')}: {item.get('detail', '')}")
+    if result.get("override_reasons"):
+        st.write("- Escalation reasons:")
+        for reason in result["override_reasons"]:
+            st.write(f"  - {reason}")
+
+
+def render_flagged_claims_only(result: Dict[str, object]):
+    st.markdown("### Flagged Claims Only")
+    claim_summary = summarize_claim_findings(result.get("claim_findings", []))
+    st.write(
+        f"{claim_summary['total']} statements reviewed; {claim_summary['flagged']} flagged for review; "
+        f"{claim_summary['supported']} without explicit weak-grounding signals."
+    )
+    if not claim_summary["flagged_items"]:
+        st.write("- No flagged claim-level cues were detected.")
+        return
+    for finding in claim_summary["flagged_items"]:
+        st.write(f"- {finding['sentence_id']}: {finding['label']} — {finding['reason']}")
+
+
+def render_reviewability_checklist(checklist: Dict[str, bool]):
+    if not checklist:
+        st.write("- Reviewability checklist unavailable.")
+        return
+    label_map = {
+        "assumptions_explicit": "Assumptions explicit",
+        "uncertainty_acknowledged": "Uncertainty acknowledged",
+        "cautionary_language_present": "Cautionary language present",
+        "review_hooks_present": "Review hooks present",
+    }
+    for key, label in label_map.items():
+        value = checklist.get(key, False)
+        st.write(f"- {label}: {'Yes' if value else 'No'}")
+
+
 def render_primary_report(title: str, result: Dict[str, object]):
     st.markdown(f"### {title}")
     risk_level = result["risk_level"]
@@ -1179,6 +1275,9 @@ def render_primary_report(title: str, result: Dict[str, object]):
         st.error(f"Overall Hallucination Risk Level: {risk_level} ({risk_score:.2f})")
 
     st.markdown("#### Verification Summary")
+    st.markdown("#### Executive Interpretation")
+    st.write(build_executive_interpretation(result))
+    st.markdown("#### Structured Summary")
     st.write(build_verification_summary(result))
     st.write(f"- Evidence coverage: `{result.get('evidence_coverage', 'unknown')}`")
     st.write(f"- Human review priority: `{result.get('human_review_priority', 'recommended')}`")
@@ -1186,32 +1285,15 @@ def render_primary_report(title: str, result: Dict[str, object]):
     st.write(f"- Operational safety evidence severity: `{safety.get('severity', 'none')}`")
     review = result.get("diagnostics", {}).get("reviewability", {})
     checklist = review.get("checklist", {})
-    if checklist:
-        st.write(
-            "**Reviewability Checklist**: "
-            + "; ".join(f"{k}={'yes' if v else 'no'}" for k, v in checklist.items())
-        )
+    st.write("**Reviewability Checklist**")
+    render_reviewability_checklist(checklist)
     task_cue = result.get("dimension_scores", {}).get("task_alignment")
     if task_cue is not None:
         task_cue_label = interpret_task_alignment_cue(task_cue)
         st.write(f"**Task / Scenario Relevance Cue**: `{task_cue:.2f}` ({task_cue_label})")
 
-    st.markdown("#### Flagged Evidence Items")
-    for item in result["flagged_evidence_items"]:
-        sev = item["severity"].upper()
-        st.write(f"- [{sev}] {item['type']}: {item['detail']}")
 
-    if result.get("override_reasons"):
-        st.markdown("#### Risk Escalation Rules Applied")
-        for reason in result["override_reasons"]:
-            st.write(f"- {reason}")
-
-    st.markdown("#### Claim-level Verification Cues")
-    for finding in result.get("claim_findings", []):
-        st.write(f"- {finding['sentence_id']}: {finding['label']} — {finding['reason']}")
-
-
-def render_diagnostics(result: Dict[str, object]):
+def render_detailed_diagnostics(result: Dict[str, object]):
     diag = result["diagnostics"]
     citation = diag["citations"]
     numeric = diag["numeric"]
@@ -1237,8 +1319,7 @@ def render_diagnostics(result: Dict[str, object]):
     )
     checklist = reviewability["checklist"]
     st.write("- Reviewability checklist:")
-    for key, value in checklist.items():
-        st.write(f"  - {key}: {'yes' if value else 'no'}")
+    render_reviewability_checklist(checklist)
     st.write(f"- Reviewability note: {reviewability['note']}")
 
     if citation.get("unverified_items"):
@@ -1255,10 +1336,6 @@ def render_diagnostics(result: Dict[str, object]):
         st.write("- Safety alerts:")
         for e in safety["evidence"]:
             st.write(f"  - {e}")
-
-    st.write("- Claim-level verification cues:")
-    for finding in result.get("claim_findings", []):
-        st.write(f"  - {finding['sentence_id']}: {finding['label']} — {finding['reason']}")
 
 
 def call_local_model(prompt: str) -> str:
@@ -1382,12 +1459,18 @@ def main():
 
         render_primary_report("Primary Risk Output", result)
 
-        st.markdown("### Dimension-wise Risk Profile")
-        df = build_dimension_table(result["dimension_scores"], result["weights"], result["primary_weights"])
-        st.dataframe(df, width="stretch")
+        render_top_assessment_signals(result)
 
-        with st.expander("Show full verification evidence report", expanded=True):
-            render_diagnostics(result)
+        st.markdown("### Dimension-wise Risk Profile")
+        with st.expander("Show full dimension-wise profile table", expanded=False):
+            df = build_dimension_table(result["dimension_scores"], result["weights"], result["primary_weights"])
+            st.dataframe(df, width="stretch")
+
+        render_key_evidence_and_alerts(result)
+        render_flagged_claims_only(result)
+
+        with st.expander("Show detailed diagnostics", expanded=False):
+            render_detailed_diagnostics(result)
 
         st.markdown("### Export Evaluation Result")
         expected_risk_label = st.text_input("Optional expected risk label", value="")
